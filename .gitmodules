@@ -1,0 +1,3 @@
+[submodule "PX4-multi-drone"]
+	path = PX4-multi-drone
+	url = git@github.com:fpratissoli/PX4-multi-drone.git
