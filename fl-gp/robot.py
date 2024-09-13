@@ -268,8 +268,7 @@ class Robot:
         Computes the centroid of the Voronoi region weighted by the spatial process. 
         """
         vertices = self.__diagram
-        field_delta = 1
-        dA = field_delta**2
+        dA = self._field_delta**2
 
         p = Path(vertices)
         bool_val = p.contains_points(self._mesh)

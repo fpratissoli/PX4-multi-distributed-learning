@@ -445,7 +445,7 @@ def coveragePerformanceFuncDataset(robots_positions, field, res=50, BBOX=[0, 0, 
 
     return H_pv
 
-def plot_dataset(fig, t, period, bbox, field, ax1, ax2, ax3, x1_field: np.ndarray, x2_field: np.ndarray, x1_mesh: np.ndarray, x2_mesh: np.ndarray, robots: np.ndarray, A) -> None:
+def plot_dataset(delta_axis, fig, period, bbox, field, ax1, ax2, ax3, x1_field: np.ndarray, x2_field: np.ndarray, x1_mesh: np.ndarray, x2_mesh: np.ndarray, robots: np.ndarray, A, t=0) -> None:
     X_MIN, Y_MIN, X_MAX, Y_MAX = bbox
     size = 16
     robot_id = 0
@@ -455,7 +455,7 @@ def plot_dataset(fig, t, period, bbox, field, ax1, ax2, ax3, x1_field: np.ndarra
     
     # Set the title of the figure
     fig.suptitle(f"Time Step: {t}", fontsize=16, color="black", family="serif", weight="bold", x=0.5, y=0.9)
-    delta_axis = 1
+    delta_axis = delta_axis
     for ax in [ax1, ax2, ax3]:
         ax.clear()
         ax.axis("equal")
@@ -463,8 +463,8 @@ def plot_dataset(fig, t, period, bbox, field, ax1, ax2, ax3, x1_field: np.ndarra
         # Set the font for the axis labels
         ax.set_xlim(X_MIN - delta_axis, X_MAX + delta_axis)
         ax.set_ylim(Y_MIN - delta_axis, Y_MAX + delta_axis)
-        ax.set_xticks(np.arange(X_MIN, X_MAX + delta_axis, 10))
-        ax.set_yticks(np.arange(Y_MIN, Y_MAX + delta_axis, 10))
+        ax.set_xticks([])
+        ax.set_yticks([])
         ax.set_aspect('equal', adjustable='box')
         
         # Plot the boundary
@@ -563,8 +563,7 @@ def plot_dataset(fig, t, period, bbox, field, ax1, ax2, ax3, x1_field: np.ndarra
     #     post_var = ax2.contourf(x1_mesh, x2_mesh, std, cmap="gray", extend='both')
         
     
-    plt.pause(0.01)
-    print(f"Time step: {t}")
+    plt.pause(3)
     # if t in [1, 2, 3, 99, 100, 110, 120, 150, 200]:
     # plt.savefig(f"pictures/TRO/novf_simple{t}.pdf", bbox_inches='tight', format='pdf', dpi=300)
     # plt.show()
