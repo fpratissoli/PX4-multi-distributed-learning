@@ -10,6 +10,9 @@ def send_coordinates(coords):
 coords = [
     [0, 0, 20],
     [0, 0, 30],
-    [0, 0, 40]
+    [0, 0, 40],
+    [0, 0, 50],
+    [0, 0, 60],
+    [0, 0, 70]
 ]
 send_coordinates(coords)
