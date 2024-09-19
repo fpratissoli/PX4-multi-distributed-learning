@@ -284,6 +284,7 @@ class Robot:
         std = (std - np.min(std)) / (np.max(std) - np.min(std))
 
         weight = std + np.tanh(0.5 * self._time) * mu * 5
+        #weight = (std + np.tanh(0.5 * self._time) * mu) * 10
         weight = np.exp(weight) - 1
 
         A = np.sum(weight) * dA
@@ -367,7 +368,7 @@ class Robot:
         sorted_indices = np.argsort(eigvals)[::-1] # Sort the eigenvalues in descending order
         eigvals = eigvals[sorted_indices] # Sort the eigenvalues
         eigvecs = eigvecs[:, sorted_indices] # Sort the eigenvectors
-        n_top = np.argmax(np.cumsum(eigvals) / np.sum(eigvals) >= 0.95) + 1 # Find the number of components needed to explain 95% of the variance
+        n_top = np.argmax(np.cumsum(eigvals) / np.sum(eigvals) >= 0.99) + 1 # Find the number of components needed to explain 95% of the variance
         top_eigvecs = eigvecs[:, :n_top]
         # Initialize a set to store all influential points
         all_influential_points = set()
@@ -379,7 +380,7 @@ class Robot:
             abs_eigvec = np.abs(top_eigvecs[:, i])
             
             # Set a threshold (e.g., 50% of the maximum value)
-            threshold = 0.97  * np.max(abs_eigvec)
+            threshold = 0.99  * np.max(abs_eigvec)
             
             # Find points above the threshold
             influential_points = np.where(abs_eigvec > threshold)[0]
