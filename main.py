@@ -88,7 +88,7 @@ async def broadcast_drone_positions(swarm, tcp_client):
             })
         await tcp_client.send_data(positions)
         print(f"Broadcasted drone positions: {positions}")
-        await asyncio.sleep(5)  # Adjust the interval as needed
+        await asyncio.sleep(2)  # Adjust the interval as needed
 
 async def main():
     # Initialize the swarm

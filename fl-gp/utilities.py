@@ -223,6 +223,7 @@ def process_group(robots_group, s_end_DEC_gapx, s_end_DAC, rho, ki, beta, eps, x
     tmp_hyps = np.empty((len(robots_group), 3))
 
     # Loop over iterations
+    sTime = time.time()
     for _ in range(s_end_DEC_gapx):
         for id, robot in enumerate(robots_group):
             # Gather neighbors' hyperparameters efficiently
@@ -244,6 +245,7 @@ def process_group(robots_group, s_end_DEC_gapx, s_end_DAC, rho, ki, beta, eps, x
         # Update robots' hyperparameters in place
         for i, robot in enumerate(robots_group):
             robot.hyps = tmp_hyps[i]
+    DEC_gapx_time = time.time() - sTime
 
     for robot in robots_group:
         print(f"Robot {robot.id} has hyperparameters: {robot.hyps}")
@@ -259,7 +261,7 @@ def process_group(robots_group, s_end_DEC_gapx, s_end_DAC, rho, ki, beta, eps, x
         robot.w_cov = beta * robot.cov_rec
                 
     shape = (len(x1_), len(x2_))
-
+    sTime = time.time()
     for _ in range(s_end_DAC):
         sum_mu_diff = np.zeros(shape, dtype=np.float128)
         sum_cov_diff = np.zeros(shape, dtype=np.float128)
@@ -283,7 +285,13 @@ def process_group(robots_group, s_end_DEC_gapx, s_end_DAC, rho, ki, beta, eps, x
         robot.cov_rec = ROB_NUM * robot.w_cov
         robot.std = np.sqrt(1 / robot.cov_rec)
         robot.mean = (1 / robot.cov_rec) * (ROB_NUM * robot.w_mu)
+    DAC_time = time.time() - sTime
+
+    for robot in robots_group:
+        robot.mu_max = np.max(robot.mean)
     print("*** Done! ***")
+
+    return DEC_gapx_time, DAC_time
 
 def voronoi_algorithm(robots_positions, BBOX, limited=False, sensRange=2):
     """
@@ -445,7 +453,7 @@ def coveragePerformanceFuncDataset(robots_positions, field, res=50, BBOX=[0, 0, 
 
     return H_pv
 
-def plot_dataset(delta_axis, fig, period, bbox, field, ax1, ax2, ax3, x1_field: np.ndarray, x2_field: np.ndarray, x1_mesh: np.ndarray, x2_mesh: np.ndarray, robots: np.ndarray, A, t=0) -> None:
+def plot_dataset(fig, period, bbox, field, ax1, x1_field: np.ndarray, x2_field: np.ndarray, x1_mesh: np.ndarray, x2_mesh: np.ndarray, robots: np.ndarray, A) -> None:
     X_MIN, Y_MIN, X_MAX, Y_MAX = bbox
     size = 16
     robot_id = 0
@@ -454,15 +462,17 @@ def plot_dataset(delta_axis, fig, period, bbox, field, ax1, ax2, ax3, x1_field: 
     plt.rcParams.update({'font.family': 'serif', 'font.size': size})
     
     # Set the title of the figure
-    fig.suptitle(f"Time Step: {t}", fontsize=16, color="black", family="serif", weight="bold", x=0.5, y=0.9)
-    delta_axis = delta_axis
-    for ax in [ax1, ax2, ax3]:
+    fig.suptitle(f"Time Step: {0}", fontsize=16, color="black", family="serif", weight="bold", x=0.5, y=0.9)
+    delta_axis = 5
+    for ax in [ax1]:
         ax.clear()
         ax.axis("equal")
         
         # Set the font for the axis labels
         ax.set_xlim(X_MIN - delta_axis, X_MAX + delta_axis)
         ax.set_ylim(Y_MIN - delta_axis, Y_MAX + delta_axis)
+        # ax.set_xticks(np.arange(X_MIN, X_MAX + delta_axis, 10))
+        # ax.set_yticks(np.arange(Y_MIN, Y_MAX + delta_axis, 10))
         ax.set_xticks([])
         ax.set_yticks([])
         ax.set_aspect('equal', adjustable='box')
@@ -472,15 +482,7 @@ def plot_dataset(delta_axis, fig, period, bbox, field, ax1, ax2, ax3, x1_field: 
         ax.plot([X_MIN, X_MAX], [Y_MIN, Y_MIN], 'k-', lw=2)
         ax.plot([X_MAX, X_MAX], [Y_MIN, Y_MAX], 'k-', lw=2)
         ax.plot([X_MIN, X_MAX], [Y_MAX, Y_MAX], 'k-', lw=2)
-        
-        # Set ticks font and size
-        # for tick in ax.xaxis.get_major_ticks():
-        #     tick.label.set_fontsize(size)
-        #     tick.label.set_fontname('serif')
-        # for tick in ax.yaxis.get_major_ticks():
-        #     tick.label.set_fontsize(size)
-        #     tick.label.set_fontname('serif')
-        
+      
         ax.grid(alpha=0.2)
 
     col = "black"
@@ -496,81 +498,19 @@ def plot_dataset(delta_axis, fig, period, bbox, field, ax1, ax2, ax3, x1_field: 
         # Plot the centroid
         ax1.scatter(robot.centroid[0], robot.centroid[1], color=col, s=10)
 
-    # Plot a line between the robots that are neighbors using the adjacency matrix and avoiding duplicating lines
+    # # Plot a line between the robots that are neighbors using the adjacency matrix and avoiding duplicating lines
     # for i in range(len(robots)):
     #     for j in range(i + 1, len(robots)):  # Start from i + 1 to avoid duplicates
     #         if A[i, j] == 1:
     #             ax1.plot([robots[i].position[0], robots[j].position[0]], [robots[i].position[1], robots[j].position[1]], color="blue", lw=2, alpha=0.7, linestyle='--')
+    
     # Plot the observations
-    # for robot in robots:
-    #     X = robot.get_dataset()[:, :2]
-    #     y = robot.get_dataset()[:, 2]
-    #     y = np.atleast_2d(y).T
-    #     ax1.scatter(X[:, 0], X[:, 1], marker='x', alpha=0.2)
+    for robot in robots:
+        X = robot.get_dataset()[:, :2]
+        y = robot.get_dataset()[:, 2]
+        y = np.atleast_2d(y).T
+        ax1.scatter(X[:, 0], X[:, 1], marker='x', alpha=0.2)
 
-    mu = robots[robot_id].mean
-    std = robots[robot_id].std
-    
-    ax2.set_title(f"Posterior Mean ({robot_id})", fontdict=font)
-    post_mean = ax2.contourf(x1_mesh, x2_mesh, mu, cmap="YlGnBu", extend='both')
-    
-    ax3.set_title(f"Posterior Variance ({robot_id})", fontdict=font)
-    post_var = ax3.contourf(x1_mesh, x2_mesh, std, cmap="gray", extend='both')
-    
     NBINS = 4
-    # divider1 = make_axes_locatable(ax1)
-    # cax1 = divider1.append_axes("bottom", size="5%", pad=0.5)
-    # cbar1 = plt.colorbar(original_field, cax=cax1, orientation="horizontal", format="%.1f")
-    # cbar1.ax.tick_params(rotation=90)
-    # tick_locator = plt.MaxNLocator(nbins=NBINS)
-    # cbar1.locator = tick_locator
-    # cbar1.ax.yaxis.label.set_fontsize(size)
-    # cbar1.ax.yaxis.label.set_fontname('serif')
-    # cbar1.update_ticks()
-    
-    divider2 = make_axes_locatable(ax2)
-    cax2 = divider2.append_axes("bottom", size="5%", pad=0.5)
-    cbar2 = plt.colorbar(post_mean, cax=cax2, orientation="horizontal", format="%.1f")
-    cbar2.ax.tick_params(rotation=90)
-    tick_locator = plt.MaxNLocator(nbins=NBINS)
-    cbar2.locator = tick_locator
-    cbar2.ax.yaxis.label.set_fontsize(size)
-    cbar2.ax.yaxis.label.set_fontname('serif')
-    cbar2.update_ticks()
-    
-    divider3 = make_axes_locatable(ax3)
-    cax3 = divider3.append_axes("bottom", size="5%", pad=0.5)
-    cbar3 = plt.colorbar(post_var, cax=cax3, orientation="horizontal", format="%.1f")
-    cbar3.ax.tick_params(rotation=90)
-    tick_locator = plt.MaxNLocator(nbins=NBINS)
-    cbar3.locator = tick_locator
-    cbar3.ax.yaxis.label.set_fontsize(size)
-    cbar3.ax.yaxis.label.set_fontname('serif')
-    cbar3.update_ticks()
-
-    # # For every robot in the simulation plot the mean and variance of the GP
-    # for i in range(len(robots)):
-    #     mu = robots[i].mean
-    #     std = robots[i].std
-
-    #     ax1 = axes[i, 0]
-    #     ax2 = axes[i, 1]
-
-    #     ax1.set_title(f"Posterior Mean ({i})", fontdict=font)
-    #     post_mean = ax1.contourf(x1_mesh, x2_mesh, mu, cmap="YlGnBu", extend='both')
-
-    #     ax2.set_title(f"Posterior Variance ({i})", fontdict=font)
-    #     post_var = ax2.contourf(x1_mesh, x2_mesh, std, cmap="gray", extend='both')
-        
-    
-    plt.pause(3)
-    # if t in [1, 2, 3, 99, 100, 110, 120, 150, 200]:
-    # plt.savefig(f"pictures/TRO/novf_simple{t}.pdf", bbox_inches='tight', format='pdf', dpi=300)
-    # plt.show()
-    # plt.savefig(f"frames/static/frame_{t}.png", bbox_inches='tight', format='png', dpi=300)
-    # plt.savefig(f"frames/webots2/frame_{t}.png", bbox_inches='tight', format='png', dpi=300)
-
-    if t != period:
-        # cbar1.remove()
-        cbar2.remove()
-        cbar3.remove()
+    plt.draw()
+    plt.pause(1)
