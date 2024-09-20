@@ -63,10 +63,14 @@ class Robot:
 
         self._dataset = np.empty((0, 3), dtype=np.float64)
         
-        self._maxTakeErr = 0.05 / 1.96
+        self._maxTakeErr = 0.1 / 1.96
         # self._maxRemoveErr = 0.05 / 1.96
 
     """ Properties """    
+    @property
+    def mu_max(self) -> np.float64:
+        return self._mu_max
+    
     @property
     def id(self) -> np.uint8:
         return self._id
@@ -176,6 +180,10 @@ class Robot:
     def position(self, value: np.ndarray) -> None:
         self._position = value
 
+    @mu_max.setter
+    def mu_max(self, value: np.float64) -> None:
+        self._mu_max = value
+
     @neighbors.setter
     def neighbors(self, value: np.ndarray) -> None:
         self._neighbors = value
@@ -268,7 +276,8 @@ class Robot:
         Computes the centroid of the Voronoi region weighted by the spatial process. 
         """
         vertices = self.__diagram
-        dA = self._field_delta**2
+        field_delta = 1
+        dA = field_delta**2
 
         p = Path(vertices)
         bool_val = p.contains_points(self._mesh)
@@ -283,8 +292,7 @@ class Robot:
         mu = (mu - np.min(mu)) / (np.max(mu) - np.min(mu))
         std = (std - np.min(std)) / (np.max(std) - np.min(std))
 
-        weight = std + np.tanh(0.5 * self._time) * mu * 5
-        #weight = (std + np.tanh(0.5 * self._time) * mu) * 10
+        weight = std + np.tanh(0.1 * self._time) * mu * 10
         weight = np.exp(weight) - 1
 
         A = np.sum(weight) * dA
@@ -363,12 +371,17 @@ class Robot:
         self._x_train = self._observations[:, :2]
         self._y_train = self._observations[:, 2].reshape(-1, 1)
 
-        K = utils.RBFKernel(self._x_train, self._x_train, self._lengthscale, self._sigma_f) + self._sigma_y**2 * np.eye(self._x_train.shape[0])
+        # Sort the dataset
+        ind = np.lexsort((self._x_train[:, 1], self._x_train[:, 0]))
+        self._x_train = self._x_train[ind]
+        self._y_train = self._y_train[ind]
+
+        K = utils.RBFKernel(self._x_train[ind], self._x_train[ind], self._lengthscale, self._sigma_f) + self._sigma_y**2 * np.eye(self._x_train.shape[0])
         eigvals, eigvecs = np.linalg.eigh(K)
         sorted_indices = np.argsort(eigvals)[::-1] # Sort the eigenvalues in descending order
         eigvals = eigvals[sorted_indices] # Sort the eigenvalues
         eigvecs = eigvecs[:, sorted_indices] # Sort the eigenvectors
-        n_top = np.argmax(np.cumsum(eigvals) / np.sum(eigvals) >= 0.99) + 1 # Find the number of components needed to explain 95% of the variance
+        n_top = np.argmax(np.cumsum(eigvals) / np.sum(eigvals) >= 0.95) + 1 # Find the number of components needed to explain 95% of the variance
         top_eigvecs = eigvecs[:, :n_top]
         # Initialize a set to store all influential points
         all_influential_points = set()
@@ -380,7 +393,7 @@ class Robot:
             abs_eigvec = np.abs(top_eigvecs[:, i])
             
             # Set a threshold (e.g., 50% of the maximum value)
-            threshold = 0.99  * np.max(abs_eigvec)
+            threshold = 0.97  * np.max(abs_eigvec)
             
             # Find points above the threshold
             influential_points = np.where(abs_eigvec > threshold)[0]
@@ -400,17 +413,17 @@ class Robot:
         points = np.atleast_2d(points)
         value = np.atleast_1d(value)
         
+        
         if not first:
-            mu, cov = self.predict(points)
-
-            std = np.sqrt(np.diag(cov))
-
-            mask = (std > self.sigma_y + self._maxTakeErr * self._mu_max).reshape(-1)
-            
-            points = points[mask, :]
-            value = value[mask]
-            
-            self._eval_dataset = np.vstack((self._eval_dataset, np.column_stack((points, value))))
+            # self._std_norm = (self._std - np.min(self._std)) / (np.max(self._std) - np.min(self._std))
+            # Given a point check if the std in the closest point from self._std is less than the threshold
+            for point, value in zip(points, value):
+                # Take the grid point closest to the point
+                closest = np.argmin(np.linalg.norm(self._mesh - point, axis=1))
+                # Check if the std is less than the threshold
+                # Normalize the std
+                if self._std.reshape(-2, 1)[closest] > (self._sigma_y + self._maxTakeErr * self._mu_max):
+                    self._eval_dataset = np.vstack((self._eval_dataset, np.array([point[0], point[1], value])))
         else:
             self._eval_dataset = np.vstack((self._eval_dataset, np.column_stack((points, value))))
             
