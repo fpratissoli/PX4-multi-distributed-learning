@@ -74,7 +74,7 @@ index = index_init
 
 """ Hystories """
 robotHistory = np.empty((ROB_NUM, 2, PERIOD)) # History of the robots' positions
-droneHistory = np.empty((ROB_NUM, 2, PERIOD*10)) # History of the drones' positions
+droneHistory = np.empty((ROB_NUM, 2, PERIOD*20)) # History of the drones' positions
 real_t=0
 
 """ Network parameters """

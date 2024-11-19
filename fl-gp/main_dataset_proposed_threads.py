@@ -30,20 +30,23 @@ field = Z
 
 """ Robots parameters """
 ROB_NUM = 6
-CAMERA_BOX = 100
-CAMERA_SAMPLES = 3
+CAMERA_BOX = 20
+CAMERA_SAMPLES = 5
 
 _area_to_cover = (x_sup * y_sup) * 2.0
 RANGE = 2 * np.sqrt((_area_to_cover / ROB_NUM) / np.pi)
-RANGE = 200
 
-K_GAIN = 3
+K_GAIN = 2
 D_t = 0.1
 
 robots = np.empty(ROB_NUM, dtype=object)
 safety_dist = 5 # Safety distance to the borders
+
+# Grid close initial positions
+init_poses = np.array([[10, 10], [10, 30], [30, 10], [30, 30], [10, 50], [30, 50]])
 for r in np.arange(ROB_NUM):
-    x1, x2 = np.random.uniform(0 + safety_dist, (x_sup - safety_dist)), np.random.uniform(0 + safety_dist, (y_sup - safety_dist))
+    # x1, x2 = np.random.uniform(0 + safety_dist, (x_sup - safety_dist)), np.random.uniform(0 + safety_dist, (y_sup - safety_dist))
+    x1, x2 = init_poses[r]
     rob = Robot(total_robots=ROB_NUM,
                 id=r,
                 x1_init=x1,
@@ -51,13 +54,25 @@ for r in np.arange(ROB_NUM):
                 x1Vals=x1_,
                 x2Vals=x2_,
                 sensing_range=RANGE,
-                sensor_noise=0.1,
+                sensor_noise=0.2,
                 bbox=BBOX,
                 mesh=mesh,
                 field_delta=d_field_)
     robots[r] = rob
 
+""" Figures """
+# fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(10, 5))
+#fig, ax1 = plt.subplots(1, 1, figsize=(10, 5))
+#plt.rcParams["pdf.fonttype"] = 42
+
 PERIOD = 300
+index_init = 600
+index_end = 1400
+step = (index_end - index_init) // PERIOD
+index = index_init
+
+""" Hystories """
+robotHistory = np.empty((ROB_NUM, 2, PERIOD)) # History of the robots' positions
 
 """ Network parameters """
 A = np.zeros((ROB_NUM, ROB_NUM)) # Adjacency matrix
@@ -72,11 +87,11 @@ TOL_ADMM = 1e-3
 beta = 1 / ROB_NUM
 s_end_DAC = 100
 
+""" global variables for threads"""
 agents_pos_received = False
 do_plot = False
 agents_pos_temp = np.empty((ROB_NUM, 2))
 
-robotHistory = np.empty((ROB_NUM, 2, PERIOD)) # History of the robots' positions
 
 def send_coordinates(coords):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -128,17 +143,20 @@ def perform_other_operation():
         max_degree = np.max(degrees)
 
         #eps = 1 / (max_degree) - 0.01 # To avoid a path network bug
-        eps = (1 / (max_degree)) * 0.5
+        eps = 1 / (max_degree)
+        eps = eps / 2
 
         for i, robot in enumerate(robots):
             robot.time = t
             robot.compute_voronoi()
 
-            # Take random points from the robot sensing area
-            #points = np.random.uniform(robot.position - CAMERA_BOX, robot.position + CAMERA_BOX, (int(CAMERA_SAMPLES), 2))
-            points = np.array([[x, y] for x in np.linspace(robot.position[0] - CAMERA_BOX, robot.position[0] + CAMERA_BOX, CAMERA_SAMPLES) for y in np.linspace(robot.position[1] - CAMERA_BOX, robot.position[1] + CAMERA_BOX, CAMERA_SAMPLES)])
-            points = np.clip(points, BBOX[0:2], BBOX[2:4])
+            # Take 5 random points from the robot sensing area
+            points = np.random.uniform(robot.position - CAMERA_BOX, robot.position + CAMERA_BOX, (int(CAMERA_SAMPLES), 2))
+            # Take the samples in a grid from the camera box
+            # points = np.array([[x, y] for x in np.linspace(robot.position[0] - CAMERA_BOX, robot.position[0] + CAMERA_BOX, CAMERA_SAMPLES) for y in np.linspace(robot.position[1] - CAMERA_BOX, robot.position[1] + CAMERA_BOX, CAMERA_SAMPLES)])
+            points = np.clip(points, [0, 0], [x_sup, y_sup])
             y_values = utils.gmm_pdf_array(points[:, 0], points[:, 1], sigma, means, flag_normalize=False) + robot.sensor_noise * np.random.randn(len(points))
+            # Force the samples to be inside the field
             # y_values = utils.evaluate_points_in_field(field, points, method='linear') + robot.sensor_noise * np.random.randn(len(points))
             
             robot.sense(points, y_values, first=first)
@@ -155,13 +173,17 @@ def perform_other_operation():
 
         for group in np.unique(groups):
             print(f"*** Processing group: {group} ***")
+            # Sort the robots by id in the group
             group_robots = [robot for robot in robots if robot.group == group]
             group_robots = sorted(group_robots, key=lambda x: x.id)
-            utils.process_group(group_robots,s_end_DEC_gapx, s_end_DAC, rho, ki, beta, eps, x1_, x2_, ROB_NUM)
-        
+            DEC_gapx_time, DAC_time = utils.process_group(group_robots,s_end_DEC_gapx, s_end_DAC, rho, ki, beta, eps, x1_, x2_, ROB_NUM)
+            # DEC_gapx_time_vec.append(DEC_gapx_time)
+            # DAC_time_vec.append(DAC_time)
+
         for i, robot in enumerate(robots):
             robot.compute_centroid()
             robotHistory[i, :, t] = agents_pos_temp[i]
+
         # Move the robots
         # for robot in robots:
         #     x1, x2 = robot.position + (-K_GAIN * (robot.position - robot.centroid) * D_t)
@@ -179,14 +201,16 @@ def perform_other_operation():
         #time.sleep(1)
         global do_plot
         do_plot = True
-        #utils.plot_dataset(d_field_, fig, t, PERIOD, BBOX, field, ax1, ax2, ax3, x1_, x2_, _X1, _X2, robots, A)
+        
+        #utils.plot_dataset(fig, t, PERIOD, BBOX, field, ax1, x1_, x2_, _X1, _X2, robots, A)
 
 def perform_plotting():
     plt.ion()
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(10, 5))
+    fig, ax1 = plt.subplots(1, 1, figsize=(10, 5))
+    #plt.rcParams["pdf.fonttype"] = 42
     while True:
         if do_plot is True:
-            utils.plot_dataset(d_field_, fig, PERIOD, BBOX, field, ax1, ax2, ax3, x1_, x2_, _X1, _X2, robots, A)
+            utils.plot_dataset(fig, t, PERIOD, BBOX, field, ax1, x1_, x2_, _X1, _X2, robots, A)
 
 def perform_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
